@@ -30,51 +30,49 @@ int main(int argc, char **argv) {
     int compte_forks = 0;
 
     while ( i < argc){
+        char **commandes = malloc(( argc ) * sizeof( char * ));
 
-        char *ligneCommandes = argv[i];
-        char *arguments = malloc(0);
-        int taille_arguments = 0;
-        while ( i < argc && strcmp( argv[i], ":" )) {
-            taille_arguments = taille_arguments + strlen(argv[i]) +1;
-            arguments = realloc(arguments, taille_arguments );
-            strcat( arguments, argv[i]);
-            strcat( arguments, " ");
+        int j = 0; // place dans array
+        while ( i < argc && strcmp( argv[i], ":" )) {  
+            commandes[j] = argv[i];
+            //*(commandes + j) = argv[i];
             i++;
+            j++;
         }
         i++;
+        //j++;
+        //commandes[j] = NULL;
 
         socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ); // verifier erreurs
 
         compte_forks++;
         pfils = fork();
 
-        
-
-
         if ( pfils == -1 ) {
             return 1;
 
         } else if ( pfils == 0 ) {  // Si c'est le fils
-
             if (compte_forks > 1) { // Verifie si c'est le premier
-                close(socket2[1]);
+                //printf("pas le premier\n");
                 dup2(socket2[0], 0);
-                close(socket2[0]);
+                close(socket2[0]); close(socket2[1]);
+
             }
 
-            if ( i < argc - 1) {   // Verifie si c'est le dernier
-                close(socket1[0]);
+            if ( i < argc) {   // Verifie si c'est le dernier
+                //printf("pas le dernier\n");
                 dup2(socket1[1], 1);
-                close(socket1[1]);
-            }
+                close(socket1[0]); close(socket1[1]);
 
-            execve( ligneCommandes, &arguments, NULL );
+            }
+                //printf("exec\n");
+            execvp( commandes[0], commandes);
+            //perror("Could not execve");
             return 1;   // ne devrait jamais se rendre ici!
 
         } else {    // Si c'est le pere
-
+            free(commandes);
         
-
             close(socket1[1]);
             dup2(socket1[0], 0);
             close(socket1[0]);
@@ -85,14 +83,15 @@ int main(int argc, char **argv) {
             // fork un compteur
 
             pid_t pcompt = fork();
-
-
             if ( pcompt == -1 ) {
                 return 1;
+
             } else if ( pcompt == 0 ) {  // Si c'est le compteur
 
                 char buffer[1024];
                 read(socket1[0], buffer, 1024);
+
+                printf("-->%s\n", buffer);
 
                 // compte les bytes
                 int bytesCopied = 0;
