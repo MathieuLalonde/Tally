@@ -73,31 +73,29 @@ int main(int argc, char **argv) {
         } else {    // Si c'est le pere
             free(commandes);
         
-            close(socket1[1]);
-            dup2(socket1[0], 0);
-            close(socket1[0]);
-
                 // ferme tube 2 (au besoin)
-            // Crée un tube 2 (vers execve) 
+            //close(socket2[0]); close(socket2[1]);
+            close(socket2[0]);
             socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ); // verifier erreurs
-            // fork un compteur
-
-            pid_t pcompt = fork();
+            
+            pid_t pcompt = fork();  // fork un compteur
             if ( pcompt == -1 ) {
                 return 1;
 
             } else if ( pcompt == 0 ) {  // Si c'est le compteur
+                close(socket1[1]);
+                close(socket2[0]);
 
+                printf("attend...\n");
                 char buffer[1024];
-                read(socket1[0], buffer, 1024);
+                int bytesCopied = read(socket1[0], socket2[1], 1024);
+                close(socket1[0]);
 
-                printf("-->%s\n", buffer);
+                //printf("-->%s\n", buffer);
 
                 // compte les bytes
-                int bytesCopied = 0;
-
-
                 write(socket2[1], buffer, sizeof(buffer));
+                close(socket2[1]);
 
    
                 //     Ouvre un fichier texte sortie
@@ -106,13 +104,19 @@ int main(int argc, char **argv) {
                 if ( outputFile == -1 ){
                     exit(1);
                 }
-                // write ...
-                //     écrit le compte dans le fichier
 
+                char resultat[10];
+                sprintf(resultat, "%d : %d\n", compte_forks, bytesCopied );
+
+                if ( write( outputFile, resultat, sizeof(resultat) ) == -1 ){
+                    exit(1);
+                } 
 
                 if ( close( outputFile ) == -1 ){ 
                     exit(1);
                 }
+
+                i = argc;  // compteur argv
 
                 // p.s. c'est le compteur qui attend le processus fils. wait
                 // i = argc + 1  // ne retourne pas au while...
@@ -122,7 +126,8 @@ int main(int argc, char **argv) {
                 // Exit
 
             } else {    // Si c'est toujours le pere
-                // rien de prévu
+                close(socket1[1]); close(socket1[0]);
+                close(socket2[1]);
             }
         }   
     } // Fin de la boucle while
@@ -141,12 +146,12 @@ int main(int argc, char **argv) {
 
         // si le fils s'est terminé normalement, afficher sa valeur de retour
         if ( WIFEXITED( etatAttente )) {
-            //printf( "%d\n", WEXITSTATUS( etatAttente ));
+            // printf( "%d\n", WEXITSTATUS( etatAttente ));
 
             // Si le fils s'est terminé à cause d'un signal reçu, affiche le no
             // du signal et retourne 1
         } else if ( WIFSIGNALED( etatAttente )) {
-            //printf( "%d\n", WTERMSIG( etatAttente ));
+            // printf( "%d\n", WTERMSIG( etatAttente ));
             return 1;
         }
     } while ( !WIFEXITED( etatAttente ) && !WIFSIGNALED( etatAttente ));
