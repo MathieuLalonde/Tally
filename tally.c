@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
                     int lu;
 
                     while(( lu = read(socket1[0], tampon, 32 )) > 0 ) {
-                        bytesCopied =+ write(socket2[1], tampon, lu);
+                        bytesCopied += write(socket2[1], tampon, lu);
                         tampon[32] = '\0';
                         lu = 0;
                     }
@@ -105,9 +105,10 @@ int main(int argc, char **argv) {
                         }
 
                         char resultat[10];
-                        sprintf(resultat, "%d : %d\n", compte_forks, bytesCopied );
+                        int longeur = sprintf(resultat, "%d : %d\n", compte_forks, bytesCopied );
 
-                        if ( write( outputFile, resultat, sizeof(resultat) ) == -1 ){
+
+                        if ( write( outputFile, resultat, longeur ) == -1 ){
                             exit(1);
                         } 
 
