@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
             i++; j++;
         }
         i++;
+        commandes[j] = '\0';
 
         socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ); // verifier erreurs
 
@@ -84,12 +85,12 @@ int main(int argc, char **argv) {
                     close(socket1[1]); close(socket2[0]);
 
                     int bytesCopied;
-                    char tampon[32] = {'\0'};
+                    char tampon[32];
                     int lu;
-
-                    while(( lu = read(socket1[0], tampon, 32 )) > 0 ) {
-                        bytesCopied += write(socket2[1], tampon, lu);
-                        tampon[32] = '\0';
+  
+                    while(( lu = read( socket1[0], tampon, 32 )) > 0 ) {
+                        bytesCopied += write( socket2[1], tampon, lu );
+                        // tampon[32] = '\0';
                         lu = 0;
                     }
 
