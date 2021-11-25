@@ -29,7 +29,8 @@ int main(int argc, char **argv) {
     int socket1[2];
     int socket2[2];
     pid_t pfils;
-    int compte_forks = 0;
+    int generation = 0;
+    int maximum_enfants=0;
 
     while ( i < argc){
         char **commandes = malloc(( argc ) * sizeof( char * ));
@@ -44,14 +45,15 @@ int main(int argc, char **argv) {
 
         socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ); // verifier erreurs
 
-        compte_forks++;
+        generation++;
+        maximum_enfants++;
         pfils = fork();
 
         if ( pfils == -1 ) {
             return 1;
 
         } else if ( pfils == 0 ) {  // Si c'est le fils
-            if (compte_forks > 1) { // Si c'est pas le premier
+            if (generation > 1) { // Si c'est pas le premier
                 dup2(socket2[0], 0);
                 close(socket2[0]); close(socket2[1]);
             }
@@ -63,7 +65,7 @@ int main(int argc, char **argv) {
             
             execvp( commandes[0], commandes);
             //perror("Could not execve");
-            if (compte_forks > 1){
+            if (generation > 1){
                 return 127; // doit renvoyer 127 au pere!!
                 // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx verifier
             } else return 1;   // ne devrait jamais se rendre ici!
@@ -76,6 +78,7 @@ int main(int argc, char **argv) {
             if ( i < argc) {   // Verifie si c'est le dernier
                 socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ); // verifier erreurs
                 
+                maximum_enfants++;
                 pid_t pcompt = fork();  // fork un compteur
                 if ( pcompt == -1 ) {
                     return 1;
@@ -106,7 +109,7 @@ int main(int argc, char **argv) {
                         }
 
                         char resultat[10];
-                        int longeur = sprintf(resultat, "%d : %d\n", compte_forks, bytesCopied );
+                        int longeur = sprintf(resultat, "%d : %d\n", generation, bytesCopied );
 
 
                         if ( write( outputFile, resultat, longeur ) == -1 ){
@@ -128,31 +131,47 @@ int main(int argc, char **argv) {
         }   
     } // Fin de la boucle while
 
-
-
-
     // wait d'alcatraz.c :
     // Attend le retour du dernier fork...
     int etatAttente;
+    int returnvalue = 127;
+
+    /* Si la dernière commande n'existe pas, le code de retour est 127. */ 
+
+
+
+    // printf("forks lef au début: %d\n", generation);
+
 
     do {
+        // printf("forks left: %d\n", generation);
+
         if ( waitpid(pfils, &etatAttente, WUNTRACED) == -1 ){
-            return 1;
+            // returnvalue = 1;
         }
 
-        // si le fils s'est terminé normalement, afficher sa valeur de retour
+        /* En cas de succès, tally retourne le code de retour de la dernière commande. */
         if ( WIFEXITED( etatAttente )) {
-            // printf( "%d\n", WEXITSTATUS( etatAttente ));
-            return WEXITSTATUS( etatAttente );
+            returnvalue = WEXITSTATUS( etatAttente );
 
-            // Si le fils s'est terminé à cause d'un signal reçu, affiche le no
-            // du signal et retourne 1
+        /* Si la dernière commande se termine à cause d'un signal,
+           le code de retour est 128 + numéro du signal. */
         } else if ( WIFSIGNALED( etatAttente )) {
-            // printf( "%d\n", WTERMSIG( etatAttente ));
-            return (128 + WTERMSIG(etatAttente));
+            returnvalue = 128 + WTERMSIG(etatAttente);
+        // } else if (wait(NULL) > 0 ) {
+            // generation--;
+            // printf("forks left: %d\n", generation);
         }
-    } while ( !WIFEXITED( etatAttente ) && !WIFSIGNALED( etatAttente ));
+    } while ( !WIFEXITED( etatAttente ) && !WIFSIGNALED( etatAttente ) ); //&& generation > 0 );
 
 
-    return 127;
+        /* Dans tous les cas, le programme tally ne se termine que lorsque toutes les
+        commandes se sont terminées. */
+        /* À part pour la dernière commande, les valeur de retour des autres commandes
+        ne sont pas prise en compte. */
+        for( i = 0; i < maximum_enfants; i++ ){
+            wait(NULL);
+        }
+
+    return returnvalue;
 }
