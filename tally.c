@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
         commandes se sont terminées. */
         /* À part pour la dernière commande, les valeur de retour des autres commandes
         ne sont pas prise en compte. */
-        for( i = 0; i < maximum_enfants; i++ ){
+        for( i = 0; i < maximum_enfants -1; i++ ){
             wait(NULL);
         }
 
