@@ -34,3 +34,13 @@ load test_helper
 FIN
 }
 
+@test "largerfile" {
+	run rm count
+	run ./tally cat cmd.png : cat : grep END : wc -w
+	check 0 "5"
+	diff -u - <(sort -n "count") <<FIN
+1 : 14539
+2 : 14539
+3 : 37
+FIN
+}
