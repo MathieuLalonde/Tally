@@ -159,7 +159,7 @@ int main(int argc, char **argv){
 
             // Si ce n'est pas la dernière redirection:
             if ( argvSelect < argc) { 
-                if (socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ) == -1)
+                if ( socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ) == -1 )
                     return 1;
                 
                 // Fork un compteur
