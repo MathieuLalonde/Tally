@@ -10,168 +10,211 @@
  *      Groupe : 20
  */
 #include <fcntl.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-
 #define FICHIER_SORTIE "count"
+#define TAILLE_TAMPON 32
+
+/**
+ * @brief Construit un array {@code argv} à donner à l'{@code execvp} pour
+ * lancer chaque nouveau processus.
+ * 
+ * @param argc nombre de valeurs de l'argv du {@code main}.
+ * @param argv l'argv du main.
+ * @param argv_select emplaceemnt de la tête de lecture dans l'argv du main.
+ * @param commands le nouvel array argv à passer en argument à execvp.
+ */
+void build_new_argv( int argc, char** argv, int *argv_select, char** commands );
+
+/**
+ * @brief Redirige {@code stdout} vers le socket1 et/ou le socket2 vers stdin, 
+ * dépendant de la situation
+ * 
+ * @param redirection_count indique à quelle redirections nous sommes rendus.
+ * @param argv_select emplaceemnt de la tête de lecture dans l'{@code argv} du main.
+ * @param argc nombre de valeurs de l'argv du main.
+ * @param socket1 la socketpair reliant {@code stdout} au compteur.
+ * @param socket2 la socketpair reliant le compteur au {@code stdin} du prochain
+ *                processus.
+ */
+void prepare_io( int redirection_count, int argv_select, int argc,
+                      int *socket1, int *socket2 );
+
+/**
+ * @brief Compte le nombre d'octets qui transitent par chaque redirection.
+ * 
+ * Cette fonction établie le lien entre le {@code socket1} et le {@code socket2}
+ * (au besoin).
+ * 
+ * @param redirection_count indique à quelle redirections nous sommes rendus.
+ * @param socket1 la socketpair reliant {@code stdout} au compteur.
+ * @param socket2 la socketpair reliant le compteur au {@code stdin} du prochain
+ *                processus. 
+ */
+void counter( int redirection_count, int *socket1, int *socket2 );
+
+/**
+ * @brief Ouvre ou crée un fichier texte sortie pour le compte
+ * 
+ * @param redirection_count 
+ * @param bytesCopied 
+ */
+void write_file( int redirection_count, int bytesCopied );
+
+
+void build_new_argv( int argc, char** argv, int *argv_select, char** commands ){
+    int position_in_array = 0;
+
+    while ( *argv_select < argc && strcmp( argv[*argv_select], ":" )) {  
+        
+        commands[position_in_array] = argv[*argv_select];
+        position_in_array++;
+        ( *argv_select )++;
+    }
+    commands[position_in_array] = '\0';
+    ( *argv_select )++;
+}
+
+void prepare_io( int redirection_count, int argv_select, int argc,
+                      int *socket1, int *socket2 ){
+    // Si ce n'est pas la première redirection, utlilise le socket2 comme stdin
+    if (redirection_count > 1) { 
+        dup2( socket2[0], 0 );
+        close( socket2[0] ); close( socket2[1] );
+    }
+    // Si ce n'est pas la dernière redirection, utilise le socket 1 comme stdin
+    if ( argv_select < argc ) { 
+        dup2( socket1[1], 1 );
+        close( socket1[0] ); close( socket1[1] );
+    }
+}
+
+void counter( int redirection_count, int *socket1, int *socket2 ){
+    char tampon[TAILLE_TAMPON] = {'\0'};
+    int bytesRead = 0;
+    int bytesCopied = 0;
+
+    close(socket1[1]); close(socket2[0]);
+
+    while(( bytesRead = read( socket1[0], tampon, TAILLE_TAMPON )) > 0 ) {
+        bytesCopied += write( socket2[1], tampon, bytesRead );
+        bytesRead = 0;
+    }
+    close( socket1[0]); close( socket2[1] );
+
+    if ( bytesCopied > 0 ){
+        write_file( redirection_count, bytesCopied );
+    }
+}
+
+void write_file( int redirection_count, int bytesCopied ){
+    char ligne_info[24];
+    
+    int outputFile = open( FICHIER_SORTIE, O_CREAT | O_APPEND | O_WRONLY, 0666 );
+    if ( outputFile == -1 ){
+        exit(1);
+    }
+
+    int longeur = sprintf( ligne_info, "%d : %d\n", redirection_count, bytesCopied );
+
+    if ( write( outputFile, ligne_info, longeur ) == -1 ){
+        exit(1);
+    } 
+    if ( close( outputFile ) == -1 ){ 
+        exit(1);
+    }
+}
+
 
 int main(int argc, char **argv) {
-    int i = 1;  // compteur argv
-    int socket1[2];
-    int socket2[2];
-    pid_t pfils;
-    int generation = 0;
-    int maximum_enfants=0;
+    pid_t child_pid = -1;
+    int argv_select = 1;
+    int socket1[2], socket2[2];
+    int redirection_count = 0;
+    int child_count = 0;
 
-    while ( i < argc){
-        char **commandes = malloc(( argc ) * sizeof( char * ));
+    while ( argv_select < argc ){
 
-        int j = 0; // la place dans array
-        while ( i < argc && strcmp( argv[i], ":" )) {  
-            commandes[j] = argv[i];
-            i++; j++;
+        char **commands = calloc( argc, sizeof( char * ));
+        build_new_argv( argc, argv, &argv_select, commands );
+
+        if (socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ) == -1){
+            return 1;
         }
-        i++;
-        commandes[j] = '\0';
 
-        socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ); // verifier erreurs
-
-        generation++;
-        maximum_enfants++;
-        pfils = fork();
-
-        if ( pfils == -1 ) {
+        // Fork un fils
+        redirection_count++;
+        child_count++;
+        child_pid = fork();
+        if ( child_pid == -1 ) {
             return 1;
 
-        } else if ( pfils == 0 ) {  // Si c'est le fils
-            if (generation > 1) { // Si c'est pas le premier
-                dup2(socket2[0], 0);
-                close(socket2[0]); close(socket2[1]);
-            }
+        // Si c'est le fils
+        } else if ( child_pid == 0 ) {  
+            prepare_io( redirection_count, argv_select, argc, socket1, socket2 );            
+            execvp( commands[0], commands );
+            return 127;
 
-            if ( i < argc) {   // Si c'est pas le dernier
-                dup2(socket1[1], 1);
-                close(socket1[0]); close(socket1[1]);
-            }
-            
-            execvp( commandes[0], commandes);
-            //perror("Could not execve");
-            if (generation > 1){
-                return 127; // doit renvoyer 127 au pere!!
-                // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx verifier
-            } else return 1;   // ne devrait jamais se rendre ici!
+        // Si c'est le pere
+        } else {    
+            free( commands );
 
-        } else {    // Si c'est le pere
-            free(commandes);
-        
-            //close(socket2[0]); close(socket2[1]);
-
-            if ( i < argc) {   // Verifie si c'est le dernier
-                socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ); // verifier erreurs
+            // Si ce n'est pas la dernière redirection:
+            if ( argv_select < argc) { 
+                if (socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ) == -1){
+                    return 1;
+                }
                 
-                maximum_enfants++;
-                pid_t pcompt = fork();  // fork un compteur
-                if ( pcompt == -1 ) {
+                // Fork un compteur
+                child_count++;
+                pid_t counter_pid = fork();
+                if ( counter_pid == -1 ) {
                     return 1;
 
-                } else if ( pcompt == 0 ) {  // Si c'est le compteur
-
-                    close(socket1[1]); close(socket2[0]);
-
-                    int bytesCopied;
-                    char tampon[32];
-                    int lu;
-  
-                    while(( lu = read( socket1[0], tampon, 32 )) > 0 ) {
-                        bytesCopied += write( socket2[1], tampon, lu );
-                        // tampon[32] = '\0';
-                        lu = 0;
-                    }
-
-                    close(socket1[0]);
-
-                    if (bytesCopied > 0){
-      
-                        // Ouvre un fichier texte sortie
-                        // char * outputPath = concatenatePath( OUTPUT_DIR, basename( path ));
-                        int outputFile = open( FICHIER_SORTIE, O_CREAT | O_APPEND | O_WRONLY, 0666 );
-                        if ( outputFile == -1 ){
-                            exit(1);
-                        }
-
-                        char resultat[10];
-                        int longeur = sprintf(resultat, "%d : %d\n", generation, bytesCopied );
-
-
-                        if ( write( outputFile, resultat, longeur ) == -1 ){
-                            exit(1);
-                        } 
-
-                        if ( close( outputFile ) == -1 ){ 
-                            exit(1);
-                        }
-                    }
-                    close(socket2[1]);
+                // Si c'est le compteur
+                } else if ( counter_pid == 0 ) { 
+                    counter( redirection_count, socket1, socket2 );
                     exit(1);
 
-                } else {    // Si c'est toujours le pere
-                    close(socket1[1]); close(socket1[0]);
-                    close(socket2[1]);
+                // Si c'est toujours le pere
+                } else {    
+                    close( socket1[1] ); close( socket1[0] );
+                    close( socket2[1] );
                 }
             }
         }   
-    } // Fin de la boucle while
+    } // Fin boucle
 
-    // wait d'alcatraz.c :
-    // Attend le retour du dernier fork...
-    int etatAttente;
-    int returnvalue = 127;
-
-    /* Si la dernière commande n'existe pas, le code de retour est 127. */ 
-
-
-
-    // printf("forks lef au début: %d\n", generation);
-
+    /* Attend le retour de la dernière commande.
+    Si elle n'existe pas, le code de retour est 127. */ 
+    int wait_state;
+    int return_value = 127;
 
     do {
-        // printf("forks left: %d\n", generation);
-
-        if ( waitpid(pfils, &etatAttente, WUNTRACED) == -1 ){
-            // returnvalue = 1;
+        if ( waitpid(child_pid, &wait_state, WUNTRACED ) == -1 ){
+            return 1;
         }
-
         /* En cas de succès, tally retourne le code de retour de la dernière commande. */
-        if ( WIFEXITED( etatAttente )) {
-            returnvalue = WEXITSTATUS( etatAttente );
+        if ( WIFEXITED( wait_state )) {
+            return_value = WEXITSTATUS( wait_state );
 
         /* Si la dernière commande se termine à cause d'un signal,
            le code de retour est 128 + numéro du signal. */
-        } else if ( WIFSIGNALED( etatAttente )) {
-            returnvalue = 128 + WTERMSIG(etatAttente);
-        // } else if (wait(NULL) > 0 ) {
-            // generation--;
-            // printf("forks left: %d\n", generation);
+        } else if ( WIFSIGNALED( wait_state )) {
+            return_value = 128 + WTERMSIG( wait_state );
         }
-    } while ( !WIFEXITED( etatAttente ) && !WIFSIGNALED( etatAttente ) ); //&& generation > 0 );
+    } while ( !WIFEXITED( wait_state ) && !WIFSIGNALED( wait_state ) ); 
 
 
-        /* Dans tous les cas, le programme tally ne se termine que lorsque toutes les
-        commandes se sont terminées. */
-        /* À part pour la dernière commande, les valeur de retour des autres commandes
-        ne sont pas prise en compte. */
-        for( i = 0; i < maximum_enfants -1; i++ ){
-            wait(NULL);
-        }
+    /* Attend que toutes les autres commands se soient terminées. */
+    for( argv_select = 0; argv_select < child_count -1; argv_select++ ){
+        wait( NULL );
+    }
 
-    return returnvalue;
+    return return_value;
 }
