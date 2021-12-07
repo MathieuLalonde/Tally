@@ -18,7 +18,7 @@
 #include <unistd.h>
 
 #define FICHIER_SORTIE "count"
-#define TAILLE_TAMPON 32
+#define TAILLE_TAMPON 64
 
 /**
  * @brief Construit un array {@code argv} à donner à l'{@code execvp} pour
@@ -26,23 +26,23 @@
  * 
  * @param argc nombre de valeurs de l'argv du {@code main}.
  * @param argv l'argv du main.
- * @param argvSelect emplaceemnt de la tête de lecture dans l'argv du main.
+ * @param argvCurseur emplaceemnt de la tête de lecture dans l'argv du main.
  * @param commands le nouvel array argv à passer en argument à execvp.
  */
-void buildNewArgv( int argc, char** argv, int *argvSelect, char** commands );
+void buildNewArgv( int argc, char** argv, int *argvCurseur, char** commands );
 
 /**
  * @brief Redirige {@code stdout} vers le socket1 et/ou le socket2 vers stdin, 
  * dépendant de la situation
  * 
  * @param redirCount indique à quelle redirections nous sommes rendus.
- * @param argvSelect emplaceemnt de la tête de lecture dans l'{@code argv} du main.
+ * @param argvCurseur emplaceemnt de la tête de lecture dans l'{@code argv} du main.
  * @param argc nombre de valeurs de l'argv du main.
  * @param socket1 la socketpair reliant {@code stdout} au compteur.
  * @param socket2 la socketpair reliant le compteur au {@code stdin} du prochain
  *                processus.
  */
-void prepareIO( int redirCount, int argvSelect, int argc,
+void prepareIO( int redirCount, int argvCurseur, int argc,
                       int *socket1, int *socket2 );
 
 /**
@@ -67,20 +67,20 @@ void counter( int redirCount, int *socket1, int *socket2 );
 void writeFile( int redirCount, int bytesCopied );
 
 
-void buildNewArgv( int argc, char** argv, int *argvSelect, char** commands ){
+void buildNewArgv( int argc, char** argv, int *argvCurseur, char** commands ){
     int positionInArray = 0;
 
-    while ( *argvSelect < argc && strcmp( argv[*argvSelect], ":" )) {  
+    while ( *argvCurseur < argc && strcmp( argv[*argvCurseur], ":" )) {  
 
-        commands[positionInArray] = argv[*argvSelect];
+        commands[positionInArray] = argv[*argvCurseur];
         positionInArray++;
-        ( *argvSelect )++;
+        ( *argvCurseur )++;
     }
     commands[positionInArray] = '\0';
-    ( *argvSelect )++;
+    ( *argvCurseur )++;
 }
 
-void prepareIO( int redirCount, int argvSelect, int argc,
+void prepareIO( int redirCount, int argvCurseur, int argc,
                       int *socket1, int *socket2 ){
     // Si ce n'est pas la première redirection, utlilise le socket2 comme stdin
     if (redirCount > 1) { 
@@ -88,7 +88,7 @@ void prepareIO( int redirCount, int argvSelect, int argc,
         close( socket2[0] ); close( socket2[1] );
     }
     // Si ce n'est pas la dernière redirection, utilise le socket 1 comme stdin
-    if ( argvSelect < argc ) { 
+    if ( argvCurseur < argc ) { 
         dup2( socket1[1], 1 );
         close( socket1[0] ); close( socket1[1] );
     }
@@ -127,15 +127,15 @@ void writeFile( int redirCount, int bytesCopied ){
 
 int main(int argc, char **argv){
     pid_t childPid = -1;
-    int argvSelect = 1;
+    int argvCurseur = 1;
     int redirCount = 0;
     int childCount = 0;
     int socket1[2], socket2[2];
 
-    while ( argvSelect < argc ){
+    while ( argvCurseur < argc ){
 
         char **commands = calloc( argc, sizeof( char * ));
-        buildNewArgv( argc, argv, &argvSelect, commands );
+        buildNewArgv( argc, argv, &argvCurseur, commands );
 
         if (socketpair( AF_UNIX, SOCK_STREAM, 0, socket1 ) == -1)
             return 1;
@@ -149,7 +149,7 @@ int main(int argc, char **argv){
 
         // Si c'est le fils
         } else if ( childPid == 0 ) {  
-            prepareIO( redirCount, argvSelect, argc, socket1, socket2 );            
+            prepareIO( redirCount, argvCurseur, argc, socket1, socket2 );            
             execvp( commands[0], commands );
             return 127;
 
@@ -158,7 +158,7 @@ int main(int argc, char **argv){
             free( commands );
 
             // Si ce n'est pas la dernière redirection:
-            if ( argvSelect < argc) { 
+            if ( argvCurseur < argc) { 
                 if ( socketpair( AF_UNIX, SOCK_STREAM, 0, socket2 ) == -1 )
                     return 1;
                 
@@ -204,7 +204,7 @@ int main(int argc, char **argv){
 
 
     /* Attend que toutes les autres commands se soient terminées. */
-    for( argvSelect = 0; argvSelect < childCount -1; argvSelect++ )
+    for( argvCurseur = 0; argvCurseur < childCount -1; argvCurseur++ )
         wait( NULL );
 
     return returnValue;
