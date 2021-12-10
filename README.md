@@ -7,7 +7,7 @@ Ce TP vous permet d'approfondir la communication interprocessus avec les sockets
 
 * Cloner (le bouton `fork` en haut à droite) ce dépôt sur le gitlab départemental.
 * Le rendre privé : dans `Settings` → `General` → `Visibility` → `Project visibility` → `Private` (n'oubliez pas d'enregistrer).
-* Ajouter l'utilisateur `@abdenbi_m` comme mainteneur (oui, j'ai besoin de ce niveau de droits) : dans `Settings` → `Members` → `Invite member` → `@abdenbi_m`.
+* Ajouter l'utilisateur `@abdenbi_m` comme mainteneur (oui, j'ai besoin de ce niveau de droits) : `Project information` → `Members` → `Invite member` → `@abdenbi_m`.
 * ⚠️ Mal effectuer ces étapes vous expose à des pénalités importantes sans préavis.
 
 ## Description de l'outil `tally`
