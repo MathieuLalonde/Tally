@@ -1,0 +1,4 @@
+#!/bin/bash
+
+(sleep 2; kill -n 2 $(pgrep sleep)) &
+./tally cat tests/nevermind : sort : uniq : wc -l : sleep 4
