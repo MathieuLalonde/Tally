@@ -1,6 +1,6 @@
-# TP2 - Compter les octets des redirections
+# Tally - Compter les octets des redirections
 
-L'objectif du TP2 est de développer l'utilitaire `tally` capable d'exécuter des conduites (*pipelines*) de commandes (comme le shell), mais aussi de comptabiliser le nombre d'octets qui transitent sur chacunes des redirections.
+L'objectif est de développer l'utilitaire `tally` capable d'exécuter des conduites (*pipelines*) de commandes (comme le shell), mais aussi de comptabiliser le nombre d'octets qui transitent sur chacunes des redirections.
 Ce TP vous permet d'approfondir la communication interprocessus avec les sockets UNIX (et l'appel système `socketpair`).
 
 ## Avant de commencer
